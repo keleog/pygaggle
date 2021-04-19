@@ -256,3 +256,15 @@ class QuestionAnsweringTransformerReranker(Reranker):
         texts.sort(key=lambda x: x.score, reverse=True)
 
         return texts
+
+class MonoBERTQuantized(MonoBERT):
+
+    def __init__(self, **kwargs):
+        super(MonoBERTQuantized, self).__init__(**kwargs)
+        self.model = torch.quantization.quantize_dynamic(self.model, {torch.nn.Linear}, dtype=torch.qint8)
+
+class MonoT5Quantized(MonoT5):
+
+    def __init__(self, **kwargs):
+        super(MonoT5Quantized, self).__init__(**kwargs)
+        self.model = torch.quantization.quantize_dynamic(self.model, {torch.nn.Linear}, dtype=torch.qint8)
