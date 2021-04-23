@@ -263,10 +263,30 @@ class MonoBERTQuantized(MonoBERT):
 
     def __init__(self, **kwargs):
         super(MonoBERTQuantized, self).__init__(**kwargs)
+        self.quantize()
+    
+    def quantize(self) -> None:
+        """
+        Quantize model.
+        NB: we first move the model to cpu because 
+        pytorch can't quantize on GPU. https://github.com/pytorch/pytorch/issues/32680#issuecomment-744627053
+        """
+        self.model.to("cpu")
         self.model = torch.quantization.quantize_dynamic(self.model, {torch.nn.Linear}, dtype=torch.qint8)
+        self.model.to(self.device)
 
 class MonoT5Quantized(MonoT5):
 
     def __init__(self, **kwargs):
         super(MonoT5Quantized, self).__init__(**kwargs)
+        self.quantize()
+    
+    def quantize(self) -> None:
+        """
+        Quantize model.
+        NB: we first move the model to cpu because 
+        pytorch can't quantize on GPU. https://github.com/pytorch/pytorch/issues/32680#issuecomment-744627053
+        """
+        self.model.to("cpu")
         self.model = torch.quantization.quantize_dynamic(self.model, {torch.nn.Linear}, dtype=torch.qint8)
+        self.model.to(self.device)
