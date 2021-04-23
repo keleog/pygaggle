@@ -16,7 +16,9 @@ from pygaggle.rerank.transformer import (
     QuestionAnsweringTransformerReranker,
     MonoBERT,
     MonoT5,
-    UnsupervisedTransformerReranker
+    UnsupervisedTransformerReranker,
+    MonoBERTQuantized,
+    MonoT5Quantized
     )
 from pygaggle.rerank.random import RandomReranker
 from pygaggle.rerank.similarity import CosineSimilarityMatrixProvider
@@ -29,7 +31,7 @@ from pygaggle.settings import Cord19Settings
 
 SETTINGS = Cord19Settings()
 METHOD_CHOICES = ('transformer', 'bm25', 't5', 'seq_class_transformer',
-                  'qa_transformer', 'random')
+                  'qa_transformer', 'random', 't5_quantized', 'seq_class_transformer_quantized')
 
 
 class KaggleEvaluationOptions(BaseModel):
@@ -72,6 +74,13 @@ def construct_t5(options: KaggleEvaluationOptions) -> Reranker:
     return MonoT5(model, tokenizer)
 
 
+def construct_t5_quantized(options: KaggleEvaluationOptions) -> Reranker:
+    model = MonoT5Quantized.get_model(options.model,
+                             device=options.device)
+    tokenizer = MonoT5Quantized.get_tokenizer(options.model, batch_size=options.batch_size)
+    return MonoT5Quantized(model=model, tokenizer=tokenizer)
+
+
 def construct_transformer(options: KaggleEvaluationOptions) -> Reranker:
     device = torch.device(options.device)
     try:
@@ -112,6 +121,33 @@ def construct_seq_class_transformer(options:
     tokenizer = MonoBERT.get_tokenizer(
                     options.tokenizer_name, do_lower_case=options.do_lower_case)
     return MonoBERT(model, tokenizer)
+
+
+def construct_seq_class_transformer_quantized(options:
+                                    KaggleEvaluationOptions) -> Reranker:
+    try:
+        model = MonoBERTQuantized.get_model(options.model, device=options.device)
+    except OSError:
+        try:
+            model = MonoBERTQuantized.get_model(
+                        options.model,
+                        from_tf=True,
+                        device=options.device)
+        except AttributeError:
+            # Hotfix for BioBERT MS MARCO. Refactor.
+            BertForSequenceClassification.bias = torch.nn.Parameter(
+                                                    torch.zeros(2))
+            BertForSequenceClassification.weight = torch.nn.Parameter(
+                                                    torch.zeros(2, 768))
+            model = BertForSequenceClassification.from_pretrained(
+                        options.model, from_tf=True)
+            model.classifier.weight = BertForSequenceClassification.weight
+            model.classifier.bias = BertForSequenceClassification.bias
+            device = torch.device(options.device)
+            model = model.to(device).eval()
+    tokenizer = MonoBERTQuantized.get_tokenizer(
+                    options.tokenizer_name, do_lower_case=options.do_lower_case)
+    return MonoBERTQuantized(model=model, tokenizer=tokenizer)
 
 
 def construct_qa_transformer(options: KaggleEvaluationOptions) -> Reranker:
@@ -168,6 +204,8 @@ def main():
                          t5=construct_t5,
                          seq_class_transformer=construct_seq_class_transformer,
                          qa_transformer=construct_qa_transformer,
+                         t5_quantized=construct_t5_quantized,
+                         seq_class_transformer_quantized=construct_seq_class_transformer_quantized,
                          random=lambda _: RandomReranker())
     reranker = construct_map[options.method](options)
     evaluator = RerankerEvaluator(reranker, options.metrics)

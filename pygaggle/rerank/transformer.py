@@ -26,7 +26,9 @@ __all__ = ['MonoT5',
            'DuoT5',
            'UnsupervisedTransformerReranker',
            'MonoBERT',
-           'QuestionAnsweringTransformerReranker']
+           'QuestionAnsweringTransformerReranker',
+           'MonoBERTQuantized',
+           'MonoT5Quantized']
 
 
 class MonoT5(Reranker):

@@ -15,7 +15,9 @@ from pygaggle.rerank.transformer import (
     UnsupervisedTransformerReranker,
     MonoT5,
     DuoT5,
-    MonoBERT
+    MonoBERT,
+    MonoBERTQuantized,
+    MonoT5Quantized
 )
 from pygaggle.rerank.random import RandomReranker
 from pygaggle.rerank.similarity import CosineSimilarityMatrixProvider
@@ -30,7 +32,7 @@ from pygaggle.settings import MsMarcoSettings
 
 SETTINGS = MsMarcoSettings()
 METHOD_CHOICES = ('transformer', 'bm25', 't5', 'seq_class_transformer',
-                  'random', 'duo_t5')
+                  'random', 'duo_t5', 't5_quantized', 'seq_class_transformer_quantized')
 
 
 class PassageRankingEvaluationOptions(BaseModel):
@@ -86,6 +88,14 @@ def construct_t5(options: PassageRankingEvaluationOptions) -> Reranker:
     return MonoT5(model, tokenizer)
 
 
+def construct_t5_quantized(options: PassageRankingEvaluationOptions) -> Reranker:
+    model = MonoT5Quantized.get_model(options.model,
+                             from_tf=options.from_tf,
+                             device=options.device)
+    tokenizer = MonoT5Quantized.get_tokenizer(options.model_type, batch_size=options.batch_size)
+    return MonoT5Quantized(model=model, tokenizer=tokenizer)
+
+
 def construct_duo_t5(options: PassageRankingEvaluationOptions) -> Tuple[Reranker, Reranker]:
     mono_reranker = construct_t5(options)
     model = DuoT5.get_model(options.duo_model,
@@ -126,6 +136,27 @@ def construct_seq_class_transformer(options: PassageRankingEvaluationOptions
         model = model.to(device).eval()
     tokenizer = MonoBERT.get_tokenizer(options.tokenizer_name)
     return MonoBERT(model, tokenizer)
+
+
+def construct_seq_class_transformer_quantized(options: PassageRankingEvaluationOptions
+                                    ) -> Reranker:
+    try:
+        model = MonoBERTQuantized.get_model(
+            options.model, from_tf=options.from_tf, device=options.device)
+    except AttributeError:
+        # Hotfix for BioBERT MS MARCO. Refactor.
+        BertForSequenceClassification.bias = torch.nn.Parameter(
+            torch.zeros(2))
+        BertForSequenceClassification.weight = torch.nn.Parameter(
+            torch.zeros(2, 768))
+        model = BertForSequenceClassification.from_pretrained(
+            options.model, from_tf=options.from_tf)
+        model.classifier.weight = BertForSequenceClassification.weight
+        model.classifier.bias = BertForSequenceClassification.bias
+        device = torch.device(options.device)
+        model = model.to(device).eval()
+    tokenizer = MonoBERTQuantized.get_tokenizer(options.tokenizer_name)
+    return MonoBERTQuantized(model=model, tokenizer=tokenizer)
 
 
 def construct_bm25(options: PassageRankingEvaluationOptions) -> Reranker:
@@ -185,6 +216,8 @@ def main():
                          t5=construct_t5,
                          duo_t5=construct_duo_t5,
                          seq_class_transformer=construct_seq_class_transformer,
+                         t5_quanitzed=construct_t5_quantized,
+                         seq_class_transformer_quantized=construct_seq_class_transformer_quantized,
                          random=lambda _: RandomReranker())
     reranker = construct_map[options.method](options)
     writer = MsMarcoWriter(args.output_file, args.overwrite_output)
